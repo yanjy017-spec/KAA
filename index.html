@@ -117,11 +117,20 @@
   .fc-band .fc .cp b.miss { color: var(--accent); }
   .fc-note { font-size: 7.4pt; color: var(--muted); text-align: right; margin: 3px 0 2px; }
   /* 팀 이슈 행 */
-  tr.issue-row td { border-bottom: 0; padding-top: 0; padding-bottom: 4px; text-align: left; font-weight: 400; color: var(--ink); font-size: 8.6pt; }
+  /* 부문실적 당월 행 · 팀실적 숫자 행: 옅은 음영 */
+  tr.shade td { background: #f5f5f5; }
+  tr.shade td.plan { background: #f5f5f5; }
+  /* 팀실적: 숫자 행(음영) 바로 아래 이슈 행이 붙고, 팀 블록 끝에만 굵은 선 */
+  tr.team-row td { border-bottom: 0; padding-top: 5px; padding-bottom: 5px; }
+  tr.issue-row td { border-bottom: 0; padding: 2px 6px 2px 0; text-align: left; font-weight: 400; color: #333; font-size: 8.6pt; line-height: 1.45; }
+  tr.issue-row td.ic { padding-left: 14px; }
+  tr.issue-row td.ic::before { content: ''; display: inline-block; width: 5px; height: 5px; background: var(--accent); margin: 0 7px 2px 0; }
   tr.issue-row td .who { color: var(--muted); font-size: 7.8pt; margin-left: 5px; }
   tr.issue-row td.none { color: var(--muted); }
-  tr.issue-row.last td { border-bottom: 1px solid var(--rule); }
-  tr.team-row td { border-bottom: 0; }
+  tr.issue-row td.none::before { background: var(--rule); }
+  tr.issue-row.first td { padding-top: 4px; }
+  tr.issue-row.last td { padding-bottom: 6px; border-bottom: 1px solid var(--ink); }
+  #tblTeam tbody tr.team-row:first-child td { border-top: 0; }
 
   /* 이슈 목록 */
   .issues { list-style: none; margin-top: 2px; }
@@ -209,8 +218,8 @@
     thead tr.grp th { color: var(--ink); border-bottom: 1px solid #d0d0d0; }
     thead tr.grp th::before { border-top-color: #e6e6e6; }
     thead th.gs, thead tr.grp th.gs { border-left-color: #bdbdbd; }
-    tbody tr.total td { background: transparent !important; position: relative; z-index: 0; overflow: hidden; }
-    tbody tr.total td::before { content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+    tbody tr.total td, tbody tr.shade td { background: transparent !important; position: relative; z-index: 0; overflow: hidden; }
+    tbody tr.total td::before, tbody tr.shade td::before { content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: 0;
       border-top: 120px solid #f4f4f4; z-index: -1; }
   }
 </style>
@@ -458,11 +467,11 @@ const METRICS = [
   { key:'pbt_total',  label:'세전이익' },
 ];
 function summaryTable(act, plan, el) {
-  el.innerHTML = `<thead><tr><th class="l">구분</th><th>실적</th><th>계획</th><th>계획비</th><th>이익률</th></tr></thead><tbody>` +
+  el.innerHTML = `<thead><tr><th class="l">구분</th><th>계획</th><th>실적</th><th>계획비</th><th>이익률</th></tr></thead><tbody>` +
     METRICS.map(m => {
       const a = act[m.key], p = plan[m.key];
       const margin = m.key === 'rev' || m.cost ? '' : (act.rev ? (a / act.rev * 100).toFixed(1) + '%' : '—');
-      return `<tr class="${m.key==='pbt_total'?'total':''}"><td class="l ${m.sub?'sub':''}">${m.label}</td>${cell(a)}${cell(p,'plan')}${rate(a,p,m.cost)}<td class="plan">${margin}</td></tr>`;
+      return `<tr class="${m.key==='pbt_total'?'total':''}"><td class="l ${m.sub?'sub':''}">${m.label}</td>${cell(p,'plan')}${cell(a)}${rate(a,p,m.cost)}<td class="plan">${margin}</td></tr>`;
     }).join('') + `</tbody>`;
 }
 
@@ -487,12 +496,12 @@ function entityRows(name, teams, rowCls, cols) {
   const sets = [ ['당월', entity(state.actual, m, teams), entity(state.plan, m, teams)],
                  ['누적', cum(state.actual, m, teams), cum(state.plan, m, teams)] ];
   return sets.map(([lab, a, p], i) =>
-    `<tr class="${i===0?rowCls:''}"><td class="l">${i===0 ? name : ''}</td><td class="l plan">${lab}</td>` +
-    cols.map(([k]) => cell(a[k],'gs') + cell(p[k],'plan') + rate(a[k], p[k])).join('') + `</tr>`).join('');
+    `<tr class="${i===0 ? rowCls + ' shade' : ''}"><td class="l">${i===0 ? name : ''}</td><td class="l plan">${lab}</td>` +
+    cols.map(([k]) => cell(p[k],'gs plan') + cell(a[k]) + rate(a[k], p[k])).join('') + `</tr>`).join('');
 }
 function head(cols, second) {
   return `<thead><tr class="grp"><th class="l" colspan="${second?2:1}"></th>` + cols.map(([,l]) => `<th colspan="3" class="gs">${l}</th>`).join('') + `</tr>` +
-    `<tr><th class="l">구분</th>${second ? '<th class="l"></th>' : ''}` + cols.map(() => `<th class="gs">실적</th><th>계획</th><th>계획비</th>`).join('') + `</tr></thead>`;
+    `<tr><th class="l">구분</th>${second ? '<th class="l"></th>' : ''}` + cols.map(() => `<th class="gs">계획</th><th>실적</th><th>계획비</th>`).join('') + `</tr></thead>`;
 }
 function renderDivisions() {
   document.getElementById('tblDiv').innerHTML = head(DIVCOLS, true) + `<tbody>` +
@@ -505,44 +514,46 @@ function renderTeams() {
   const body = TEAMS.map(t => {
     const a = entity(state.actual, m, [t]), p = entity(state.plan, m, [t]);
     const issues = issuesFor('팀', t);
-    const row = `<tr class="team-row div-row"><td class="l">${t}</td>` +
-      TEAMCOLS.map(([k]) => cell(a[k],'gs') + cell(p[k],'plan') + rate(a[k], p[k])).join('') + `</tr>`;
+    const row = `<tr class="team-row div-row shade"><td class="l">${t}</td>` +
+      TEAMCOLS.map(([k]) => cell(p[k],'gs plan') + cell(a[k]) + rate(a[k], p[k])).join('') + `</tr>`;
     const irows = issues.length
-      ? issues.map((r, i) => `<tr class="issue-row ${i===issues.length-1?'last':''}"><td></td><td colspan="${span}">· ${r[3] ?? ''}${r[4] ? `<span class="who">${r[4]}</span>` : ''}</td></tr>`).join('')
-      : `<tr class="issue-row last"><td></td><td colspan="${span}" class="none">· 이슈 없음</td></tr>`;
+      ? issues.map((r, i) => `<tr class="issue-row ${i===0?'first':''} ${i===issues.length-1?'last':''}"><td class="ic" colspan="${span + 1}">${r[3] ?? ''}${r[4] ? `<span class="who">${r[4]}</span>` : ''}</td></tr>`).join('')
+      : `<tr class="issue-row first last"><td class="ic none" colspan="${span + 1}">이슈 없음</td></tr>`;
     return row + irows;
   }).join('');
   document.getElementById('tblTeam').innerHTML = head(TEAMCOLS, false) + `<tbody>${body}</tbody>`;
 }
 
-// ── 연간 전망 (8~12월 합계) ──
-// db_forecast 탭에 해당 월 행이 있으면 그 값을, 없으면 [누적 실적 + 잔여월 계획]으로 자동 산출
+// ── 연간 전망 (1~12월 합계) ──
+// 연간 전망 = 1~당월 실적 + 당월 이후 월별 전망. 월별 전망은 db_forecast 탭(연월별 행, 원 단위)에서 읽고, 없는 달은 계획으로 채움
 const FC_COLS = [ ['rev','매출액'], ['gp','매출이익'], ['op_total','영업이익'], ['pbt_total','세전이익'] ];
 function renderForecast() {
   const m = state.month, key = `${YEAR}-${m}`;
   const rows = state.ops.db_forecast || [];
   const hdr = (rows[0] || []).map(h => String(h ?? '').replace(/\s/g,''));
-  const row = rows.slice(1).find(r => ymOf(r[0]) === key);
+  const colOf = label => hdr.findIndex(h => h && (h === label || h.startsWith(label)));
+  const fcRow = mm => rows.slice(1).find(r => ymOf(r[0]) === `${YEAR}-${mm}` && r.slice(1).some(v => typeof v === 'number'));
   const actC = cum(state.actual, m, ALL_TEAMS);
   const planFull = MONTHS.reduce((acc, mm) => add(acc, entity(state.plan, mm, ALL_TEAMS)), zero());
-  const planRest = MONTHS.filter(mm => mm > m).reduce((acc, mm) => add(acc, entity(state.plan, mm, ALL_TEAMS)), zero());
-  const auto = add(actC, planRest);
-  const pick = (k, label) => {
-    if (!row) return null;
-    const i = hdr.findIndex(h => h && (h === label || h.startsWith(label)));
-    return i >= 0 && typeof row[i] === 'number' ? row[i] / 1e8 : null;
-  };
-  let manual = false;
+  const restMonths = MONTHS.filter(mm => mm > m);
+  const fcMonths = restMonths.filter(mm => fcRow(mm));            // 월별 전망이 입력된 잔여월
+  // 잔여월 합 = db_forecast 값(있으면) + 계획(없는 달)
+  const restVal = k => restMonths.reduce((s, mm) => {
+    const r = fcRow(mm), i = colOf(FC_COLS.find(c => c[0] === k)[1]);
+    return s + (r && i >= 0 && typeof r[i] === 'number' ? r[i] / 1e8 : entity(state.plan, mm, ALL_TEAMS)[k]);
+  }, 0);
+  const manual = fcMonths.length > 0;
   document.getElementById('fcBand').innerHTML = FC_COLS.map(([k, label]) => {
-    let v = pick(k, label); if (v != null) manual = true; else v = auto[k];
+    const v = actC[k] + restVal(k);
     const g = gapTxt(v, planFull[k]);
-    return `<div class="fc"><div class="lb">${label} 전망</div><div class="vl">${fmt(v)}<small>억</small></div>` +
-      `<div class="cp">연간계획 ${fmt(planFull[k])} · 계획비 <b class="${g.cls==='miss'?'miss':''}">${g.txt}</b></div></div>`;
+    return `<div class="fc"><div class="lb">${label} · 연간계획 ${fmt(planFull[k])}억</div><div class="vl">${fmt(v)}<small>억 전망</small></div>` +
+      `<div class="cp">계획비 <b class="${g.cls==='miss'?'miss':''}">${g.txt}</b></div></div>`;
   }).join('');
   document.getElementById('fcSub').textContent = `${YEAR}년 연간 (1~12월)`;
-  document.getElementById('fcNote').textContent = manual
-    ? `전망 = db_forecast 시트 ${key} 입력값`
-    : `전망 = 1~${monLabel(m)} 실적 + ${m === '12' ? '잔여월 없음' : monLabel(String(parseInt(m,10)+1).padStart(2,'0')) + '~12월 계획'} (db_forecast 시트에 ${key} 행을 입력하면 그 값으로 대체)`;
+  const nextM = m === '12' ? null : monLabel(String(parseInt(m,10)+1).padStart(2,'0'));
+  document.getElementById('fcNote').textContent = !nextM ? `전망 = 1~12월 실적`
+    : manual ? `전망 = 1~${monLabel(m)} 실적 + ${nextM}~12월 월별 전망(db_forecast${fcMonths.length < restMonths.length ? ', 미입력 달은 계획' : ''})`
+    : `전망 = 1~${monLabel(m)} 실적 + ${nextM}~12월 계획 (db_forecast 시트에 월별 전망을 입력하면 그 값으로 대체)`;
 }
 function ymOf(v) {
   if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}`;
