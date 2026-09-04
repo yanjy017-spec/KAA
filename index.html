@@ -151,7 +151,10 @@
   .sheet.page2.hidden { display: none; }
 
   /* 운영현황 (2페이지) */
-  .grid2.ops2 { grid-template-columns: 1fr 1.25fr; }
+  .grid2.ops2 { grid-template-columns: 1fr 1fr; }
+  h2.gap-top { margin-top: 24px; }
+  #opsInv td.l { max-width: 34mm; overflow: hidden; text-overflow: ellipsis; }
+  #opsInv tr.inv-leaf td.l { padding-left: 12px; }
   .fc-band .fc .cmp { font-size: 7.8pt; color: var(--muted); display: flex; gap: 8px; }
   .fc-band .fc .cmp b { color: var(--ink); font-weight: 600; }
   .fc-band .fc .cmp .d { font-weight: 700; }
@@ -183,6 +186,12 @@
   table.bs tr.lv2 td { border-bottom: 1px solid #f0f0f0; }
   table.bs tr.lv1 td.l { padding-left: 8px; }
   table.bs td.chg { font-weight: 600; }
+  table.bs tr.lv0 td.l, table.bs tr.lv1 td.l { cursor: pointer; user-select: none; }
+  table.bs .tg { display: inline-block; width: 11px; font-size: 8pt; color: var(--muted); margin-right: 2px; }
+  table.bs tr.hidden { display: none; }
+  .bs-tools { display: flex; gap: 6px; justify-content: flex-end; margin: -2px 0 4px; }
+  .bs-tools .btn { padding: 2px 9px; font-size: 11px; }
+  @media print { .bs-tools { display: none !important; } table.bs .tg { display: none; } table.bs tr.lv0 td.l, table.bs tr.lv1 td.l { cursor: default; } }
 
   /* ── 로그인 ────────────────────────────────── */
   #gate { position: fixed; inset: 0; z-index: 999; background: var(--chrome); display: flex; align-items: center; justify-content: center; }
@@ -301,7 +310,7 @@
       <div>
         <h2>인원현황 <small>명 · 전월 대비</small></h2>
         <table id="opsStaff"></table>
-        <h2>기말 가용현금 <small>억원 · 전월 대비</small></h2>
+        <h2 class="gap-top">기말 가용현금 <small>억원 · 전월 대비</small></h2>
         <table id="opsCash"></table>
       </div>
       <div>
@@ -324,6 +333,7 @@
       <div><div class="co">코오롱오토옥션㈜ · 재무회계팀</div><h1 id="title3">요약 재무상태표</h1></div>
       <div class="meta" id="meta3"></div>
     </div>
+    <div class="bs-tools"><button class="btn" onclick="bsToggleAll(false)">모두 펼치기</button><button class="btn" onclick="bsToggleAll(true)">모두 접기</button></div>
     <table id="tblBS" class="bs"></table>
     <h2>재무비율 <small>당월 기준 · 자동 계산</small></h2>
     <table id="tblRatio" class="bs"></table>
@@ -443,7 +453,7 @@ function cum(data, upto, teams) {
 // ═══════════════════════════════════════════════════════════════
 // 상태 · 헬퍼
 // ═══════════════════════════════════════════════════════════════
-const state = { month: '08', maxMonth: '08', actual: {}, plan: {}, issues: [], ops: {}, live: false, loadedAt: null };
+const state = { month: '08', maxMonth: '08', actual: {}, plan: {}, issues: [], ops: {}, live: false, loadedAt: null, bsCollapsed: new Set() };
 
 const fmt = v => {
   if (v == null || isNaN(v)) return '—';
@@ -853,6 +863,13 @@ function buildBSRows() {
 }
 
 // db_bs 헤더: 계정 | 전기말 | 비고 | 2026-01 | 비고 | … — '비고' 열은 바로 앞 기간 열의 월별 비고
+// 3페이지 펼치기/접기 — 접은 상태 그대로 인쇄됨
+function bsToggle(name) { if (state.bsCollapsed.has(name)) state.bsCollapsed.delete(name); else state.bsCollapsed.add(name); renderBS(); }
+function bsToggleAll(collapse) {
+  state.bsCollapsed.clear();
+  if (collapse) { const walk = n => { if (typeof n !== 'string') { state.bsCollapsed.add(n.n); n.kids.forEach(walk); } }; BS_TREE.forEach(walk); }
+  renderBS();
+}
 function bsColumns(hdr) {
   const cols = { prior: -1, months: {}, notes: {}, note: -1 };
   let lastKey = null;
@@ -896,16 +913,19 @@ function renderBS() {
     return [mon, stat].filter(Boolean).join(' · ');
   };
   const out = [];
-  function walk(node) {
+  function walk(node, ancestors) {
     const name = typeof node === 'string' ? node : node.n;
     const lv = typeof node === 'string' ? 2 : node.kids.every(k => typeof k === 'string') ? 1 : 0;   // 총계 0 · 소계 1 · 계정 2
     const b = val(node, cB), p = val(node, cP), c = val(node, cM);
-    out.push(`<tr class="lv${lv}"><td class="l">${name}</td><td>${bsFmt(b)}</td><td class="plan">${bsFmt(p)}</td><td><b>${bsFmt(c)}</b></td>` +
+    const hidden = ancestors.some(a => state.bsCollapsed.has(a));
+    const collapsed = state.bsCollapsed.has(name);
+    const label = lv < 2 ? `<span class="tg">${collapsed ? '▸' : '▾'}</span>${name}` : name;
+    out.push(`<tr class="lv${lv} ${hidden ? 'hidden' : ''}"><td class="l" ${lv < 2 ? `onclick="bsToggle('${name}')"` : ''}>${label}</td><td>${bsFmt(b)}</td><td class="plan">${bsFmt(p)}</td><td><b>${bsFmt(c)}</b></td>` +
       (c != null && p != null ? bsChg(c - p) : '<td class="chg"></td>') + (c != null && b != null ? bsChg(c - b) : '<td class="chg"></td>') +
       `<td class="note">${noteFor(name)}</td></tr>`);
-    if (typeof node !== 'string') node.kids.forEach(walk);
+    if (typeof node !== 'string') node.kids.forEach(k => walk(k, [...ancestors, name]));
   }
-  BS_TREE.forEach(walk);
+  BS_TREE.forEach(n => walk(n, []));
   document.getElementById('tblBS').innerHTML =
     `<thead><tr><th class="l">구분</th><th>전기말</th><th>전월</th><th>당월</th><th>증감(전월대비)</th><th>증감(전기대비)</th><th class="note">비고</th></tr></thead><tbody>${out.join('')}</tbody>`;
 
