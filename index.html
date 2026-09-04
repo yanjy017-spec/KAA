@@ -865,9 +865,10 @@ function buildBSRows() {
 // db_bs 헤더: 계정 | 전기말 | 비고 | 2026-01 | 비고 | … — '비고' 열은 바로 앞 기간 열의 월별 비고
 // 3페이지 펼치기/접기 — 접은 상태 그대로 인쇄됨
 function bsToggle(name) { if (state.bsCollapsed.has(name)) state.bsCollapsed.delete(name); else state.bsCollapsed.add(name); renderBS(); }
+// 모두 접기 = 세부 계정만 숨김 (총계·소계 행은 유지)
 function bsToggleAll(collapse) {
   state.bsCollapsed.clear();
-  if (collapse) { const walk = n => { if (typeof n !== 'string') { state.bsCollapsed.add(n.n); n.kids.forEach(walk); } }; BS_TREE.forEach(walk); }
+  if (collapse) { const walk = n => { if (typeof n === 'string') return; if (n.kids.every(k => typeof k === 'string')) state.bsCollapsed.add(n.n); else n.kids.forEach(walk); }; BS_TREE.forEach(walk); }
   renderBS();
 }
 function bsColumns(hdr) {
