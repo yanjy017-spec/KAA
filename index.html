@@ -572,13 +572,20 @@ function ymOf(v) {
 
 function issuesFor(kind, target) {
   const key = `${YEAR}-${state.month}`;
-  return state.issues.filter(r => ymOf(r[0]) === key && String(r[1] ?? '').trim() === kind && (target == null || String(r[2] ?? '').trim() === target));
+  // 구분 열에 팀명·부문명을 직접 써도 인식 (구분=경매운영팀, 대상 빈칸 → 구분 '팀', 대상 '경매운영팀')
+  const norm = r => {
+    const g = String(r[1] ?? '').trim(), t = String(r[2] ?? '').trim();
+    if (TEAMS.includes(g)) return { kind: '팀', target: g };
+    if (DIVISIONS.some(d => d.name === g)) return { kind: '부문', target: g };
+    return { kind: g, target: t };
+  };
+  return state.issues.filter(r => { if (ymOf(r[0]) !== key) return false; const n = norm(r); return n.kind === kind && (target == null || n.target === target); });
 }
 const li = r => `<li>${r[3] ?? ''}${r[4] ? `<span class="who">${r[4]}</span>` : ''}</li>`;
 function renderIssues() {
   const co = issuesFor('전사'), div = issuesFor('부문');
   const el = document.getElementById('issuesCo');
-  const all = [...co, ...div.map(r => [r[0], r[1], r[2], `[${r[2]}] ${r[3]}`, r[4]])];
+  const all = [...co, ...div.map(r => { const t = String(r[2] ?? '').trim() || String(r[1] ?? '').trim(); return [r[0], r[1], t, `[${t}] ${r[3]}`, r[4]]; })];
   el.className = 'issues' + (all.length ? '' : ' empty');
   el.innerHTML = all.length ? all.map(li).join('') : `<li>db_issue 시트에 ${YEAR}-${state.month} / 전사 항목을 입력하면 여기에 표시됩니다</li>`;
 }
