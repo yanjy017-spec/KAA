@@ -172,9 +172,17 @@
   table.loan td.due { color: var(--accent); font-weight: 700; }
   table.loan td.memo { text-align: left; white-space: normal; font-size: 8pt; color: #444; max-width: 40mm; }
   #opsStaff td.memo { text-align: left; white-space: normal; font-size: 8pt; color: #444; line-height: 1.4; padding-left: 10px; border-left: 1px solid var(--rule-soft); }
-  #opsStaff tr.note-row td { text-align: left; white-space: normal; font-size: 8.2pt; color: #333; line-height: 1.5; padding: 5px 6px 3px; border-bottom: 1px solid var(--rule); }
-  #opsStaff tr.note-row td div { padding: 1px 0; }
-  #opsStaff tr.note-row td b { font-weight: 700; color: var(--ink); margin-right: 4px; }
+  /* 인원현황: 표(좌) + 비고(우) 나란히. 비고는 항목별 한 줄, 길면 들여쓰기 유지하며 줄바꿈 */
+  .staff-wrap { display: flex; gap: 8px; align-items: flex-start; }
+  .staff-wrap table { width: 58%; flex: none; }
+  .staff-notes { flex: 1; min-width: 0; align-self: stretch; display: flex; flex-direction: column; }
+  .staff-notes .nhdr { background: #2a2a2a; color: #d8d8d8; font-size: 7.8pt; font-weight: 500; padding: 4px 6px; border-bottom: 1px solid var(--ink); }
+  .staff-notes .nbody { flex: 1; padding: 3px 6px 4px; border-bottom: 1px solid var(--rule); }
+  .staff-notes .nl { display: flex; gap: 5px; font-size: 8pt; line-height: 1.4; color: #333; padding: 2px 0; }
+  .staff-notes .nl b { flex: none; min-width: 24px; color: var(--ink); }
+  .staff-notes .nl span { flex: 1; min-width: 0; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
+
+  .staff-wrap table:only-child { width: 100%; }
   #opsStaff th.l:last-child { padding-left: 10px; }
   #opsStaff tr.total td.memo { font-weight: 400; }
 
@@ -239,6 +247,8 @@
       border-top: 120px solid #efefef; z-index: -1; }
     thead tr.grp th { color: var(--ink); border-bottom: 1px solid #d0d0d0; }
     thead tr.grp th::before { border-top-color: #e6e6e6; }
+    .staff-notes .nhdr { color: #444; background: transparent !important; position: relative; z-index: 0; overflow: hidden; }
+    .staff-notes .nhdr::before { content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: 0; border-top: 60px solid #efefef; z-index: -1; }
     thead th.gs, thead tr.grp th.gs { border-left-color: #bdbdbd; }
     tbody tr.total td, tbody tr.shade td { background: transparent !important; position: relative; z-index: 0; overflow: hidden; }
     tbody tr.total td::before, tbody tr.shade td::before { content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: 0;
@@ -315,7 +325,7 @@
     <div class="grid2 ops2">
       <div>
         <h2>인원현황 <small>명 · 전월 대비</small></h2>
-        <table id="opsStaff"></table>
+        <div class="staff-wrap"><table id="opsStaff"></table><div class="staff-notes" id="opsStaffNotes"><div class="nhdr">비고</div><div class="nbody"></div></div></div>
         <h2 class="gap-top">기말 가용현금 <small>억원 · 전월 대비</small></h2>
         <table id="opsCash"></table>
       </div>
@@ -687,7 +697,7 @@ function renderOps() {
     // 월 비고: 줄바꿈 또는 ' / ' 로 항목을 나누고 "입사: 홍길동, 김철수" 처럼 콜론 앞은 굵게
     const monthNote = noteC >= 0 ? String(st[noteC] ?? '') : '';
     const noteLines = monthNote.split(/\n|\s\/\s/).map(t => t.trim()).filter(Boolean)
-      .map(t => { const m = t.match(/^([^:：]{1,12})\s*[:：]\s*(.+)$/); return m ? `<b>${m[1]}</b> ${m[2]}` : t; });
+      .map(t => { const m = t.match(/^([^:：]{1,12})\s*[:：]\s*(.+)$/); return m ? `<b>${m[1]}</b><span>${m[2]}</span>` : `<span>${t}</span>`; });
     stEl.innerHTML = `<colgroup><col style="width:34%"><col style="width:16%"><col style="width:16%"><col style="width:16%">${hasRowNotes ? '<col>' : ''}</colgroup>` +
       `<thead><tr><th class="l">구분</th><th>당월</th><th>전월</th><th>증감</th>${hasRowNotes ? '<th class="l">비고</th>' : ''}</tr></thead><tbody>` +
       rowsDef.map((r, i) => {
@@ -695,9 +705,11 @@ function renderOps() {
         const note = hasRowNotes ? `<td class="memo">${rowNote(r.lb)}</td>` : '';
         return `<tr class="${i===0?'total':''}"><td class="l">${r.lb}</td><td>${cnt(v)}</td><td class="plan">${pv != null ? cnt(pv) : '—'}</td><td>${pv != null ? diffTxt(v, pv, 'cnt', true) : ''}</td>${note}</tr>`;
       }).join('') +
-      (noteLines.length ? `<tr class="note-row"><td colspan="${hasRowNotes ? 5 : 4}">${noteLines.map(l => `<div>${l}</div>`).join('')}</td></tr>` : '') + `</tbody>`;
-    stEl.style.width = hasRowNotes ? '100%' : '100%';
-  } else stEl.innerHTML = `<tbody><tr><td class="l plan">db_staff 시트에 ${key} 행 없음</td></tr></tbody>`;
+      `</tbody>`;
+    const nEl = document.getElementById('opsStaffNotes');
+    nEl.style.display = noteLines.length ? '' : 'none';
+    nEl.querySelector('.nbody').innerHTML = noteLines.map(l => `<div class="nl">${l}</div>`).join('');
+  } else { stEl.innerHTML = `<tbody><tr><td class="l plan">db_staff 시트에 ${key} 행 없음</td></tr></tbody>`; document.getElementById('opsStaffNotes').style.display = 'none'; }
 
   // ── 기말 가용현금 ──
   const ca = rowsFor('db_cash', key)[0], caP = rowsFor('db_cash', prevKey)[0];
