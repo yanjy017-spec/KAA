@@ -243,7 +243,8 @@
     .sheet.page2.hidden { display: none; }
     .sheet.page3 { height: 297mm; min-height: 297mm; overflow: hidden; page-break-after: auto; page-break-before: always; }
     .sheet.page3.hidden { display: none; }
-    .sheet.page4 { display: none !important; }   /* 확인용 메모는 인쇄·PDF 제외 */
+    .sheet.page4 { height: auto; min-height: 0; page-break-before: always; page-break-after: auto; padding-bottom: 10mm; }   /* 확인용 메모: 열람 중일 때만 4페이지로 인쇄 */
+    .sheet.page4.hidden { display: none; }
     tbody tr.lv0 td { background: transparent !important; position: relative; z-index: 0; overflow: hidden; }
     tbody tr.lv0 td::before { content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: 0; border-top: 120px solid #f4f4f4; z-index: -1; }
     a { text-decoration: none; color: inherit; }
@@ -366,14 +367,14 @@
     <div class="foot"><span id="bsFootL">단위: 백만원 · 금액은 raw_bs(결산명세서) → db_bs 자동 집계, 없는 달은 db_bs 직접 입력 · 비고는 db_bs의 해당 월 비고 열</span><span id="footR3"></span></div>
   </div>
 
-  <!-- 4페이지: 확인용 메모 — 메모 비밀번호로 들어온 경우에만 표시, 인쇄 제외 -->
+  <!-- 4페이지: 확인용 메모 — 메모 비밀번호로 들어온 경우에만 표시·인쇄 -->
   <div class="sheet page4 hidden" id="page4">
     <div class="masthead">
       <div><div class="co">코오롱오토옥션㈜ · 재무회계팀 · 확인용</div><h1 id="title4">확인용 메모</h1></div>
       <div class="meta" id="meta4"></div>
     </div>
     <div id="memoBody" class="memo"></div>
-    <div class="foot"><span>db_issue 확인용 메모 열 · 메모 비밀번호로 열람할 때만 표시 · 인쇄되지 않음</span><span id="footR4"></span></div>
+    <div class="foot"><span>db_issue 확인용 메모 열 · 메모 비밀번호로 열람할 때만 표시</span><span id="footR4"></span></div>
   </div>
 </div>
 
@@ -1047,7 +1048,7 @@ function renderMemo() {
     ? lines.map(t => t.startsWith('[') ? `<div class="mh">${esc(t)}</div>` : `<div class="ml">${esc(t).replace(/^(·\s*[^:：]+)([:：])/, '<b>$1</b>$2')}</div>`).join('')
     : `<div class="none">db_issue 확인용 메모 열에 ${key} 메모가 없습니다</div>`;
   document.getElementById('title4').innerHTML = `${YEAR}년 <span>${monLabel(state.month)}</span> 확인용 메모`;
-  document.getElementById('meta4').innerHTML = `기준: ${YEAR}.${state.month}<br>본인 확인용 · 인쇄 제외`;
+  document.getElementById('meta4').innerHTML = `기준: ${YEAR}.${state.month}<br>본인 확인용`;
   document.getElementById('footR4').textContent = `코오롱오토옥션 · ${YEAR}.${state.month} · 메모`;
 }
 // 메모 비밀번호 확인 + 메모 수신 (POST — 비밀번호가 URL 에 남지 않음). 성공 시 true
