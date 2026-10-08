@@ -189,6 +189,15 @@
   /* 재무상태표 (3페이지) */
   .sheet.page3 { min-height: 297mm; }
   .sheet.page3.hidden { display: none; }
+  /* 확인용 메모 (4페이지) */
+  .sheet.page4 { min-height: 0; border-top: 3px solid var(--accent); }
+  .sheet.page4 .foot { position: static; margin-top: 12px; }
+  .sheet.page4.hidden { display: none; }
+  .memo .mh { font-weight: 700; margin: 12px 0 4px; padding-bottom: 3px; border-bottom: 1px solid var(--ink); }
+  .memo .mh:first-child { margin-top: 4px; }
+  .memo .ml { padding: 3px 0 3px 12px; border-bottom: 1px solid var(--rule-soft); line-height: 1.5; white-space: normal; }
+  .memo .ml b { font-weight: 600; }
+  .memo .none { color: var(--muted); padding: 6px 0; }
   table.bs { font-size: 8.8pt; }
   table.bs td, table.bs th { padding: 2.6px 6px; }
   table.bs td.note { text-align: left; white-space: normal; font-size: 7.9pt; color: #444; line-height: 1.35; max-width: 66mm; }
@@ -234,6 +243,7 @@
     .sheet.page2.hidden { display: none; }
     .sheet.page3 { height: 297mm; min-height: 297mm; overflow: hidden; page-break-after: auto; page-break-before: always; }
     .sheet.page3.hidden { display: none; }
+    .sheet.page4 { display: none !important; }   /* 확인용 메모는 인쇄·PDF 제외 */
     tbody tr.lv0 td { background: transparent !important; position: relative; z-index: 0; overflow: hidden; }
     tbody tr.lv0 td::before { content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: 0; border-top: 120px solid #f4f4f4; z-index: -1; }
     a { text-decoration: none; color: inherit; }
@@ -354,6 +364,16 @@
     <h2>재무비율 <small>당월 기준 · 자동 계산</small></h2>
     <table id="tblRatio" class="bs"></table>
     <div class="foot"><span id="bsFootL">단위: 백만원 · 금액은 raw_bs(결산명세서) → db_bs 자동 집계, 없는 달은 db_bs 직접 입력 · 비고는 db_bs의 해당 월 비고 열</span><span id="footR3"></span></div>
+  </div>
+
+  <!-- 4페이지: 확인용 메모 — 메모 비밀번호로 들어온 경우에만 표시, 인쇄 제외 -->
+  <div class="sheet page4 hidden" id="page4">
+    <div class="masthead">
+      <div><div class="co">코오롱오토옥션㈜ · 재무회계팀 · 확인용</div><h1 id="title4">확인용 메모</h1></div>
+      <div class="meta" id="meta4"></div>
+    </div>
+    <div id="memoBody" class="memo"></div>
+    <div class="foot"><span>db_issue 확인용 메모 열 · 메모 비밀번호로 열람할 때만 표시 · 인쇄되지 않음</span><span id="footR4"></span></div>
   </div>
 </div>
 
@@ -1012,7 +1032,37 @@ function renderBS() {
   document.getElementById('footR3').textContent = `코오롱오토옥션 · ${YEAR}.${m} · 3/3`;
 }
 
-function renderAll() { renderTabs(); renderForecast(); renderSummary(); renderIssues(); renderDivisions(); renderTeams(); renderOps(); renderBS(); }
+// ═══════════════════════════════════════════════════════════════
+// 확인용 메모 (4페이지) — db_issue 의 '…메모…' 제목 열(현재 G열). 공개 데이터에는 없고, 메모 비밀번호를 Apps Script 가 확인한 뒤에만 내려줌
+//   '[' 로 시작하는 줄 = 소제목, 나머지 = 한 줄 항목. 연월은 시트 A열(빈 행은 위 행의 연월)
+// ═══════════════════════════════════════════════════════════════
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+function renderMemo() {
+  const p4 = document.getElementById('page4');
+  if (!state.memo) { p4.classList.add('hidden'); return; }
+  p4.classList.remove('hidden');
+  const key = `${YEAR}-${state.month}`;
+  const lines = state.memo.filter(x => x.ym === key).map(x => x.text);
+  document.getElementById('memoBody').innerHTML = lines.length
+    ? lines.map(t => t.startsWith('[') ? `<div class="mh">${esc(t)}</div>` : `<div class="ml">${esc(t).replace(/^(·\s*[^:：]+)([:：])/, '<b>$1</b>$2')}</div>`).join('')
+    : `<div class="none">db_issue 확인용 메모 열에 ${key} 메모가 없습니다</div>`;
+  document.getElementById('title4').innerHTML = `${YEAR}년 <span>${monLabel(state.month)}</span> 확인용 메모`;
+  document.getElementById('meta4').innerHTML = `기준: ${YEAR}.${state.month}<br>본인 확인용 · 인쇄 제외`;
+  document.getElementById('footR4').textContent = `코오롱오토옥션 · ${YEAR}.${state.month} · 메모`;
+}
+// 메모 비밀번호 확인 + 메모 수신 (POST — 비밀번호가 URL 에 남지 않음). 성공 시 true
+async function loadMemo(pw) {
+  if (!APPS_SCRIPT_URL || !pw) return false;
+  try {
+    const r = await fetch(APPS_SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'memo', pw }) });
+    const d = await r.json();
+    if (!d.ok) return false;
+    state.memo = d.memo || [];
+    return true;
+  } catch (e) { console.error(e); return false; }
+}
+
+function renderAll() { renderTabs(); renderForecast(); renderSummary(); renderIssues(); renderDivisions(); renderTeams(); renderOps(); renderBS(); renderMemo(); }
 
 // ═══════════════════════════════════════════════════════════════
 // 데이터 로드 — Apps Script (JSONP) → 실패 시 내장 샘플
@@ -1051,6 +1101,9 @@ async function loadData(force = false) {
     const p = await fetchJSONP(APPS_SCRIPT_URL + (force ? '?nocache=1' : ''));
     if (!p || !p.raw_actual) throw new Error('raw_actual 시트가 없습니다');
     applyPayload(p, true);
+    // 메모 비밀번호로 들어온 세션이면 메모도 다시 받음 (새로고침 버튼 포함)
+    const mpw = sessionStorage.getItem('kaa_memo');
+    if (mpw && await loadMemo(mpw)) renderMemo();
   } catch (e) {
     console.error(e);
     document.getElementById('srcText').textContent = '연결 실패 — ' + e.message + ' (샘플 표시)';
@@ -1061,10 +1114,15 @@ async function loadData(force = false) {
 // ═══════════════════════════════════════════════════════════════
 // 로그인
 // ═══════════════════════════════════════════════════════════════
-function checkGate() {
-  const v = document.getElementById('gateInput').value;
-  if (v === APP_PASSWORD) { sessionStorage.setItem('kaa_auth','1'); document.getElementById('gate').style.display = 'none'; }
-  else { document.getElementById('gateErr').style.display = 'block'; document.getElementById('gateInput').value = ''; document.getElementById('gateInput').focus(); }
+// 열람 비밀번호 → 1~3페이지. 그 외 입력은 메모 비밀번호로 Apps Script 에 확인 → 맞으면 4페이지(확인용 메모)까지
+async function checkGate() {
+  const inp = document.getElementById('gateInput'), err = document.getElementById('gateErr');
+  const v = inp.value;
+  const open = () => { sessionStorage.setItem('kaa_auth','1'); document.getElementById('gate').style.display = 'none'; };
+  if (v === APP_PASSWORD) { open(); return; }
+  err.style.display = 'none';
+  if (v && await loadMemo(v)) { sessionStorage.setItem('kaa_memo', v); open(); renderMemo(); return; }
+  err.style.display = 'block'; inp.value = ''; inp.focus();
 }
 document.addEventListener('DOMContentLoaded', () => {
   if (sessionStorage.getItem('kaa_auth') === '1') document.getElementById('gate').style.display = 'none';
