@@ -152,12 +152,15 @@
   /* 팀실적 (2페이지) */
   .sheet.pageT { min-height: 0; }
   .sheet.pageT .foot { position: static; margin-top: 12px; }
-  table.kpi tr.kfirst td { border-top: 1px solid var(--rule); }
-  table.kpi tr.kfirst td.l.kname { font-weight: 700; }
-  table.kpi td.kname { width: 30%; }
-  table.kpi tr.krate td { color: var(--muted); font-size: 8.4pt; }
-  table.kpi td.memo { text-align: left; white-space: normal; font-size: 8pt; color: #444; }
-  table.kpi .dash { color: var(--rule); }
+  /* 팀 블록 안 KPI 행: 매출액 열 자리에 계획·실적·계획비 */
+  tr.kpi-head td { font-size: 7.2pt; color: var(--muted); padding: 3px 5px 1px; border-bottom: 1px solid var(--rule-soft); }
+  tr.kpi-head td.l { padding-left: 14px; }
+  tr.kpi-row td { font-size: 8.4pt; padding: 2px 5px; border-bottom: 0; }
+  tr.kpi-row td.l { padding-left: 14px; color: #333; font-weight: 400; }
+  tr.kpi-row.krate td { color: var(--muted); font-size: 7.9pt; }
+  td.kmemo { text-align: left !important; white-space: normal; font-size: 7.6pt; color: var(--muted); font-weight: 400; }
+  tr.kpi-row.kend td { border-bottom: 1px solid var(--ink); padding-bottom: 6px; }
+  #tblTeam .dash { color: var(--rule); }
 
   /* 운영현황 (2페이지) */
   .grid2.ops2 { grid-template-columns: 1fr 1fr; }
@@ -338,11 +341,9 @@
       <div><div class="co">코오롱오토옥션㈜ · 재무회계팀</div><h1 id="titleT">팀실적</h1></div>
       <div class="meta" id="metaT"></div>
     </div>
-    <h2>팀 손익 <small>당월 · 억원 · 팀 이슈</small></h2>
+    <h2>팀실적 <small>당월 · 손익 억원 · KPI 대 · 계획 대비 · 팀마다 손익 → KPI → 이슈</small></h2>
     <table id="tblTeam"></table>
-    <h2 class="gap-top">팀 KPI <small id="kpiSub">당월 · 대 · 계획 대비</small></h2>
-    <table id="tblKpi" class="kpi"></table>
-    <div class="foot"><span>팀 KPI — db_auction 오른쪽 블록(연월·팀·세부·지표·계획·실적) · 계획 = 2026 실행계획(207) · 낙찰률은 출품·낙찰 대수로 자동 계산 · 계획·실적 빈칸은 —</span><span id="footRT"></span></div>
+    <div class="foot"><span>KPI = db_auction 오른쪽 블록(연월·팀·세부·지표·계획·실적) · 계획 = 2026 실행계획(207) · KPI 숫자는 매출액 열 자리에 표시 · 낙찰률 자동 계산 · 빈칸은 —</span><span id="footRT"></span></div>
   </div>
 
   <div class="sheet page2 hidden" id="page2">
@@ -602,64 +603,66 @@ function renderDivisions() {
     DIVISIONS.map(d => entityRows(d.name, divTeams(d), 'div-row', DIVCOLS)).join('') +
     entityRows('전사 합계', ALL_TEAMS, 'total', DIVCOLS) + `</tbody>`;
 }
-// 팀실적: 당월 1행 + 그 아래 팀 이슈 1건당 1행
+// 팀실적: 팀마다 [손익 1행] → [KPI 행들] → [팀 이슈] 를 한 블록으로 — 손익과 KPI 를 팀별로 같이 봄
+//   KPI = db_auction 오른쪽 블록, 헤더: 연월 | 팀 | 세부 | 지표 | 계획 | 실적 | 비고 (헤더 이름으로 열을 찾음, '지표' 열 기준)
+//   KPI 팀 이름이 손익 팀명(또는 표시명, 예: 플랫폼+소매)과 같으면 그 팀 블록에, 아니면(세일즈 계 등) 표 맨 아래 따로
+//   KPI 숫자는 매출액 열(계획·실적·계획비) 자리에 표시. 같은 세부 안에 출품·낙찰이 있으면 낙찰 아래 낙찰률 자동. 빈칸은 —
+function teamKpiGroups(key) {
+  const rows = state.ops.db_auction || [], hdr = (rows[0] || []).map(h => String(h ?? '').replace(/\s/g,''));
+  const cK = hdr.indexOf('지표');
+  if (cK < 0) return [];
+  const after = name => hdr.indexOf(name, cK), before = name => hdr.lastIndexOf(name, cK);
+  const cY = before('연월'), cT = before('팀'), cS = before('세부'), cP = after('계획'), cA = after('실적'), cN = after('비고');
+  const val = v => (v == null || v === '' || v === '-') ? null : num(v);
+  const groups = [], gi = {};
+  rows.slice(1).filter(r => ymOf(r[cY]) === key && String(r[cK] ?? '').trim()).forEach(r => {
+    const t = String(r[cT] ?? '').trim(), s = String(r[cS] ?? '').trim(), g = t + '|' + s;
+    if (!(g in gi)) { gi[g] = groups.length; groups.push({ t, s, rows: [] }); }
+    groups[gi[g]].rows.push({ k: String(r[cK]).trim(), p: val(r[cP]), a: val(r[cA]), n: cN >= 0 ? String(r[cN] ?? '') : '' });
+  });
+  return groups;
+}
 function renderTeams() {
-  const m = state.month, span = TEAMCOLS.length * 3;
+  const m = state.month, span = TEAMCOLS.length * 3, key = `${YEAR}-${m}`;
+  const groups = teamKpiGroups(key), used = new Set();
+  const dash = '<span class="dash">—</span>';
+  const fk = (v, kind) => v == null ? dash : kind === 'pct' ? v.toFixed(1) + '%' : cnt(v);
+  const kline = (label, p, a, kind, n, cls = '') =>
+    `<tr class="kpi-row ${cls}"><td class="l">${label}</td><td class="gs plan">${fk(p, kind)}</td><td>${fk(a, kind)}</td>` +
+    `<td>${p == null || a == null ? '' : diffTxt(a, p, kind)}</td><td class="kmemo" colspan="${span - 3}">${n || ''}</td></tr>`;
+  const kpiRows = gs => {
+    if (!gs.length) return '';
+    const out = [`<tr class="kpi-head"><td class="l">KPI (대)</td><td class="gs">계획</td><td>실적</td><td>계획비</td><td colspan="${span - 3}"></td></tr>`];
+    gs.forEach(g => g.rows.forEach(r => {
+      const pre = g.s ? g.s + ' · ' : '';
+      out.push(kline(pre + r.k, r.p, r.a, 'cnt', r.n));
+      if (/낙찰/.test(r.k)) {
+        const e = g.rows.find(x => /출품/.test(x.k)), rt = (x, y) => (x != null && y) ? x / y * 100 : null;
+        if (e) out.push(kline(pre + '낙찰률', rt(r.p, e.p), rt(r.a, e.a), 'pct', '', 'krate'));
+      }
+    }));
+    return out.join('');
+  };
   const body = TEAMS.map(t => {
     const a = entity(state.actual, m, [t]), p = entity(state.plan, m, [t]);
     const issues = issuesFor('팀', t);
     const row = `<tr class="team-row div-row shade"><td class="l">${teamLabel(t)}</td>` +
       TEAMCOLS.map(([k]) => cell(p[k],'gs plan') + cell(a[k]) + rate(a[k], p[k])).join('') + `</tr>`;
+    const mine = groups.filter(g => g.t === t || g.t === teamLabel(t)); mine.forEach(g => used.add(g));
     const irows = issues.length
       ? issues.map((r, i) => `<tr class="issue-row ${i===0?'first':''} ${i===issues.length-1?'last':''}"><td class="ic" colspan="${span + 1}">${r[3] ?? ''}${r[4] ? `<span class="who">${r[4]}</span>` : ''}</td></tr>`).join('')
       : `<tr class="issue-row first last"><td class="ic none" colspan="${span + 1}">이슈 없음</td></tr>`;
-    return row + irows;
+    return row + kpiRows(mine) + irows;
   }).join('');
-  document.getElementById('tblTeam').innerHTML = head(TEAMCOLS, false) + `<tbody>${body}</tbody>`;
+  // 손익 팀에 붙지 않는 KPI (세일즈 계 등) — 맨 아래 따로
+  const rest = groups.filter(g => !used.has(g));
+  const restBody = [...new Set(rest.map(g => g.t))].map(t =>
+    `<tr class="team-row div-row shade"><td class="l">${teamLabel(t)}</td><td class="l kmemo" colspan="${span}">KPI만 표시 (손익 팀 아님)</td></tr>` +
+    kpiRows(rest.filter(g => g.t === t)).replace(/<tr class="kpi-row ([^"]*)"((?:(?!<tr)[\s\S])*)$/, '<tr class="kpi-row kend $1"$2')).join('');
+  document.getElementById('tblTeam').innerHTML = head(TEAMCOLS, false) + `<tbody>${body}${restBody}</tbody>`;
   document.getElementById('titleT').innerHTML = `${YEAR}년 <span>${monLabel(m)}</span> 팀실적`;
   document.getElementById('metaT').innerHTML = `기준: ${YEAR}.${m}<br>손익: 억원 · KPI: 대`;
   document.getElementById('footRT').textContent = `코오롱오토옥션 · ${YEAR}.${m} · 2/4`;
-}
-
-// ── 팀 KPI (계획 대비) ──
-//   db_auction 오른쪽 블록 — 헤더: 연월 | 팀 | 세부 | 지표 | 계획 | 실적 | 비고 (헤더 이름으로 열을 찾음, '지표' 열 기준)
-//   같은 팀·세부 안에서 나온 순서대로 표시. 출품대수·낙찰대수가 둘 다 있으면 그 아래 낙찰률 자동. 빈칸은 —
-function renderTeamKpi() {
-  const el = document.getElementById('tblKpi'), key = `${YEAR}-${state.month}`;
-  const rows = state.ops.db_auction || [], hdr = (rows[0] || []).map(h => String(h ?? '').replace(/\s/g,''));
-  const cK = hdr.indexOf('지표');
-  if (cK < 0) { el.innerHTML = `<tbody><tr><td class="l plan">db_auction 오른쪽에 팀 KPI 블록(연월·팀·세부·지표·계획·실적)이 없습니다</td></tr></tbody>`; return; }
-  const after = name => hdr.indexOf(name, cK), before = name => hdr.lastIndexOf(name, cK);
-  const cY = before('연월'), cT = before('팀'), cS = before('세부'), cP = after('계획'), cA = after('실적'), cN = after('비고');
-  const val = v => (v == null || v === '' || v === '-') ? null : num(v);
-  const items = rows.slice(1).filter(r => ymOf(r[cY]) === key && String(r[cK] ?? '').trim());
-  if (!items.length) { el.innerHTML = `<tbody><tr><td class="l plan">db_auction 팀 KPI 블록에 ${key} 행이 없습니다</td></tr></tbody>`; return; }
-  const groups = [], gi = {};
-  items.forEach(r => {
-    const t = String(r[cT] ?? '').trim(), s = String(r[cS] ?? '').trim(), g = t + '|' + s;
-    if (!(g in gi)) { gi[g] = groups.length; groups.push({ t, s, rows: [] }); }
-    groups[gi[g]].rows.push({ k: String(r[cK]).trim(), p: val(r[cP]), a: val(r[cA]), n: cN >= 0 ? String(r[cN] ?? '') : '' });
-  });
-  const dash = '<span class="dash">—</span>';
-  const line = (cls, name, k, p, a, kind, n) =>
-    `<tr class="${cls}"><td class="l kname">${name}</td><td class="l">${k}</td>` +
-    `<td class="gs plan">${p == null ? dash : kind === 'pct' ? p.toFixed(1) + '%' : cnt(p)}</td>` +
-    `<td>${a == null ? dash : kind === 'pct' ? a.toFixed(1) + '%' : cnt(a)}</td>` +
-    `<td>${p == null || a == null ? '' : diffTxt(a, p, kind)}</td><td class="memo">${n || ''}</td></tr>`;
-  const body = groups.map(g => {
-    const name = g.s ? `${teamLabel(g.t)} · ${g.s}` : teamLabel(g.t);
-    const out = [];
-    g.rows.forEach((r, i) => {
-      out.push(line(i === 0 ? 'kfirst' : '', i === 0 ? name : '', r.k, r.p, r.a, 'cnt', r.n));
-      if (/낙찰/.test(r.k)) {   // 낙찰 행 바로 아래 낙찰률
-        const e = g.rows.find(x => /출품/.test(x.k));
-        const rt = (x, y) => (x != null && y) ? x / y * 100 : null;
-        if (e) out.push(line('krate', '', '낙찰률', rt(r.p, e.p), rt(r.a, e.a), 'pct', ''));
-      }
-    });
-    return out.join('');
-  }).join('');
-  el.innerHTML = `<thead><tr><th class="l">팀</th><th class="l">지표</th><th class="gs">계획</th><th>실적</th><th>계획비</th><th class="l">비고</th></tr></thead><tbody>${body}</tbody>`;
 }
 
 // ── 연간 전망 (1~12월 합계) ──
@@ -1125,7 +1128,7 @@ function renderMemo() {
   document.getElementById('meta4').innerHTML = `기준: ${YEAR}.${state.month}<br>본인 확인용`;
   document.getElementById('footR4').textContent = `코오롱오토옥션 · ${YEAR}.${state.month} · 메모`;
 }
-function renderAll() { renderTabs(); renderForecast(); renderSummary(); renderIssues(); renderDivisions(); renderTeams(); renderTeamKpi(); renderOps(); renderBS(); renderMemo(); }
+function renderAll() { renderTabs(); renderForecast(); renderSummary(); renderIssues(); renderDivisions(); renderTeams(); renderOps(); renderBS(); renderMemo(); }
 
 // ═══════════════════════════════════════════════════════════════
 // 데이터 로드 — Apps Script POST { action:'data', pw } (비밀번호가 맞아야 데이터가 옴, 주소에 비밀번호 안 남음)
