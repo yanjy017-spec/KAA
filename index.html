@@ -343,7 +343,7 @@
     </div>
     <h2>팀실적 <small>당월 · 손익 억원 · KPI 대 · 계획 대비 · 팀마다 손익 → KPI → 이슈</small></h2>
     <table id="tblTeam"></table>
-    <div class="foot"><span>KPI = db_auction 오른쪽 블록(연월·팀·세부·지표·계획·실적) · 계획 = 2026 실행계획(207) · KPI 숫자는 매출액 열 자리에 표시 · 낙찰률 자동 계산 · 빈칸은 —</span><span id="footRT"></span></div>
+    <div class="foot"><span>손익 단위: 억원 · KPI 단위: 대 · KPI는 계획·실적·계획비 순 · 낙찰률 = 낙찰 ÷ 출품 · △는 음수</span><span id="footRT"></span></div>
   </div>
 
   <div class="sheet page2 hidden" id="page2">
@@ -373,7 +373,7 @@
     <h2 id="opsIssueHdr">운영 특이사항</h2>
     <ul class="issues" id="issuesOps"></ul>
 
-    <div class="foot"><span>경매 운영지표·인원·현금·재고·차입금 — db_auction · db_staff · db_cash · db_inventory · db_loan 시트 기준 · 전월·전년동월은 해당 연월 행이 있을 때 표시</span><span id="footR2"></span></div>
+    <div class="foot"><span>단위: 대 · 명 · 억원 · △는 음수</span><span id="footR2"></span></div>
   </div>
 
   <div class="sheet page3 hidden" id="page3">
@@ -385,7 +385,7 @@
     <table id="tblBS" class="bs"></table>
     <h2>재무비율 <small>당월 기준 · 자동 계산</small></h2>
     <table id="tblRatio" class="bs"></table>
-    <div class="foot"><span id="bsFootL">단위: 백만원 · 금액은 raw_bs(결산명세서) → db_bs 자동 집계, 없는 달은 db_bs 직접 입력 · 비고는 db_bs의 해당 월 비고 열</span><span id="footR3"></span></div>
+    <div class="foot"><span id="bsFootL">단위: 백만원 · △는 음수</span><span id="footR3"></span></div>
   </div>
 
   <!-- 4페이지: 확인용 메모 — 메모 비밀번호로 들어온 경우에만 표시·인쇄 -->
@@ -395,7 +395,7 @@
       <div class="meta" id="meta4"></div>
     </div>
     <div id="memoBody" class="memo"></div>
-    <div class="foot"><span>db_issue 확인용 메모 열 · 메모 비밀번호로 열람할 때만 표시</span><span id="footR4"></span></div>
+    <div class="foot"><span>본인 확인용</span><span id="footR4"></span></div>
   </div>
 </div>
 
@@ -580,7 +580,7 @@ function renderSummary() {
   summaryTable(actC, plnC, document.getElementById('tblCum'));
   summaryTable(actM, plnM, document.getElementById('tblMon'));
   const when = state.loadedAt ? state.loadedAt.toLocaleDateString('ko-KR') : '';
-  document.getElementById('meta').innerHTML = `단위: 억원<br>기준: ${YEAR}.${m} 마감 · 계획 = 수정사업계획<br>구글시트 연동 ${when}`;
+  document.getElementById('meta').innerHTML = `단위: 억원<br>기준: ${YEAR}.${m} 마감 · 계획 = 수정사업계획`;
   document.getElementById('footR').textContent = `코오롱오토옥션 · ${YEAR}.${m}`;
 }
 
@@ -657,7 +657,7 @@ function renderTeams() {
   // 손익 팀에 붙지 않는 KPI (세일즈 계 등) — 맨 아래 따로
   const rest = groups.filter(g => !used.has(g));
   const restBody = [...new Set(rest.map(g => g.t))].map(t =>
-    `<tr class="team-row div-row shade"><td class="l">${teamLabel(t)}</td><td class="l kmemo" colspan="${span}">KPI만 표시 (손익 팀 아님)</td></tr>` +
+    `<tr class="team-row div-row shade"><td class="l">${teamLabel(t)}</td><td class="l kmemo" colspan="${span}"></td></tr>` +
     kpiRows(rest.filter(g => g.t === t)).replace(/<tr class="kpi-row ([^"]*)"((?:(?!<tr)[\s\S])*)$/, '<tr class="kpi-row kend $1"$2')).join('');
   document.getElementById('tblTeam').innerHTML = head(TEAMCOLS, false) + `<tbody>${body}${restBody}</tbody>`;
   document.getElementById('titleT').innerHTML = `${YEAR}년 <span>${monLabel(m)}</span> 팀실적`;
@@ -693,8 +693,8 @@ function renderForecast() {
   document.getElementById('fcSub').textContent = `${YEAR}년 연간 (1~12월)`;
   const nextM = m === '12' ? null : monLabel(String(parseInt(m,10)+1).padStart(2,'0'));
   document.getElementById('fcNote').textContent = !nextM ? `전망 = 1~12월 실적`
-    : manual ? `전망 = 1~${monLabel(m)} 실적 + ${nextM}~12월 월별 전망(db_forecast${fcMonths.length < restMonths.length ? ', 미입력 달은 계획' : ''})`
-    : `전망 = 1~${monLabel(m)} 실적 + ${nextM}~12월 계획 (db_forecast 시트에 월별 전망을 입력하면 그 값으로 대체)`;
+    : manual ? `전망 = 1~${monLabel(m)} 실적 + ${nextM}~12월 월 전망${fcMonths.length < restMonths.length ? ' (전망 없는 달은 계획)' : ''}`
+    : `전망 = 1~${monLabel(m)} 실적 + ${nextM}~12월 계획`;
 }
 function ymOf(v) {
   if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}`;
@@ -721,7 +721,7 @@ function renderIssues() {
   const el = document.getElementById('issuesCo');
   const all = [...co, ...div.map(r => { const t = String(r[2] ?? '').trim() || String(r[1] ?? '').trim(); return [r[0], r[1], t, `[${t}] ${r[3]}`, r[4]]; })];
   el.className = 'issues' + (all.length ? '' : ' empty');
-  el.innerHTML = all.length ? all.map(li).join('') : `<li>db_issue 시트에 ${YEAR}-${state.month} / 전사 항목을 입력하면 여기에 표시됩니다</li>`;
+  el.innerHTML = all.length ? all.map(li).join('') : `<li>당월 이슈 없음</li>`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -772,7 +772,7 @@ function renderOps() {
         <div class="cmp"><span>전월</span><b>${pv ?? '—'}</b>${p ? diffTxt(c[k], p[k], kind, true) : ''}</div>
       </div>`).join('') + (auc[4] ? `<div class="fc" style="grid-column:span 4;padding:4px 10px;color:#444;font-size:8.4pt;border-top:1px solid var(--rule)">${auc[4]}</div>` : '');
   } else {
-    el.innerHTML = `<div class="fc" style="grid-column:span 4;color:var(--muted)">db_auction 시트에 ${key} 행(경매횟수 / 출품대수 / 낙찰대수)을 입력하면 표시됩니다</div>`;
+    el.innerHTML = `<div class="fc" style="grid-column:span 4;color:var(--muted)">경매 실적 집계 전</div>`;
   }
 
   // ── 인원현황 ──
@@ -809,7 +809,7 @@ function renderOps() {
     const nEl = document.getElementById('opsStaffNotes');
     nEl.style.display = noteLines.length ? '' : 'none';
     nEl.querySelector('.nbody').innerHTML = noteLines.map(l => `<div class="nl">${l}</div>`).join('');
-  } else { stEl.innerHTML = `<tbody><tr><td class="l plan">db_staff 시트에 ${key} 행 없음</td></tr></tbody>`; document.getElementById('opsStaffNotes').style.display = 'none'; }
+  } else { stEl.innerHTML = `<tbody><tr><td class="l plan">인원 자료 없음</td></tr></tbody>`; document.getElementById('opsStaffNotes').style.display = 'none'; }
 
   // ── 기말 가용현금 ──
   const ca = rowsFor('db_cash', key)[0], caP = rowsFor('db_cash', prevKey)[0];
@@ -820,7 +820,7 @@ function renderOps() {
     caEl.innerHTML = `<thead><tr><th class="l">구분</th><th>당월</th><th>전월</th><th>증감</th></tr></thead><tbody>` +
       `<tr class="total"><td class="l">기말 가용현금</td><td>${fmt(v)}</td><td class="plan">${pv != null ? fmt(pv) : '—'}</td><td>${pv != null ? diffTxt(v, pv, 'amt') : ''}</td></tr>` +
       (ca[2] ? `<tr><td class="l plan" colspan="4" style="white-space:normal;font-weight:400">${ca[2]}</td></tr>` : '') + `</tbody>`;
-  } else caEl.innerHTML = `<tbody><tr><td class="l plan">db_cash 시트에 ${key} 행 없음</td></tr></tbody>`;
+  } else caEl.innerHTML = `<tbody><tr><td class="l plan">가용현금 자료 없음</td></tr></tbody>`;
 
   // ── 재고현황 ──
   const inv = rowsFor('db_inventory', key), invP = rowsFor('db_inventory', prevKey);
@@ -851,7 +851,7 @@ function renderOps() {
     invEl.innerHTML = `<thead><tr class="grp"><th class="l"></th><th colspan="2" class="gs">당월 기말</th><th colspan="2" class="gs">전월 대비</th></tr>` +
       `<tr><th class="l">구분</th><th class="gs">대수</th><th>금액(억)</th><th class="gs">전월 대수</th><th>증감</th></tr></thead>` +
       `<tbody>` + line('total', '합계', tq, ta, hasTP ? tpq : null, tpa) + body + `</tbody>`;
-  } else invEl.innerHTML = `<tbody><tr><td class="l plan">db_inventory 시트에 ${key} 행(팀 / 매입구분 / 대수 / 금액) 없음</td></tr></tbody>`;
+  } else invEl.innerHTML = `<tbody><tr><td class="l plan">재고 자료 없음</td></tr></tbody>`;
 
   // ── 차입금 현황 ──
   //   db_loan : 연월 / 구분 / 약정일 / 만기일 / 약정금액(원) / 차입금(원) / 잔여한도(원) / 금리 / 비고
@@ -1105,8 +1105,7 @@ function renderBS() {
     }).join('') + `</tbody>`;
 
   document.getElementById('title3').innerHTML = `${YEAR}년 <span>${monLabel(m)}</span> 요약 재무상태표`;
-  const srcTxt = k => built.autoMonths.includes(k) ? '결산명세서(대시보드 집계)' : 'db_bs';
-  document.getElementById('meta3').innerHTML = `기준: ${YEAR}.${m} 말 · 단위: 백만원<br>당월 ${srcTxt(`${YEAR}-${m}`)} · 전월 ${srcTxt(`${YEAR}-${prevM}`)} · 전기말 ${srcTxt(`${Number(YEAR)-1}-12`)}`;
+  document.getElementById('meta3').innerHTML = `기준: ${YEAR}.${m} 말<br>단위: 백만원`;
   document.getElementById('footR3').textContent = `코오롱오토옥션 · ${YEAR}.${m} · 4/4`;
 }
 
@@ -1123,7 +1122,7 @@ function renderMemo() {
   const lines = state.memo.filter(x => x.ym === key).map(x => x.text);
   document.getElementById('memoBody').innerHTML = lines.length
     ? lines.map(t => t.startsWith('[') ? `<div class="mh">${esc(t)}</div>` : `<div class="ml">${esc(t).replace(/^(·\s*[^:：]+)([:：])/, '<b>$1</b>$2')}</div>`).join('')
-    : `<div class="none">db_issue 확인용 메모 열에 ${key} 메모가 없습니다</div>`;
+    : `<div class="none">당월 메모 없음</div>`;
   document.getElementById('title4').innerHTML = `${YEAR}년 <span>${monLabel(state.month)}</span> 확인용 메모`;
   document.getElementById('meta4').innerHTML = `기준: ${YEAR}.${state.month}<br>본인 확인용`;
   document.getElementById('footR4').textContent = `코오롱오토옥션 · ${YEAR}.${state.month} · 메모`;
@@ -1152,7 +1151,7 @@ function applyPayload(p, live) {
   if (!state.loadedAt || state.month > mx) state.month = mx;   // 새로고침 때는 보고 있던 월 유지
   state.maxMonth = mx; state.live = live; state.loadedAt = new Date();
   document.getElementById('srcDot').className = 'dot' + (live ? ' live' : '');
-  document.getElementById('srcText').textContent = `구글시트 · ${state.loadedAt.toLocaleTimeString('ko-KR')}`;
+  document.getElementById('srcText').textContent = `불러옴 · ${state.loadedAt.toLocaleTimeString('ko-KR')}`;
   renderAll();
 }
 function showGate(msg) {
