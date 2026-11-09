@@ -149,6 +149,15 @@
     font-size: 7pt; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 3px; }
   .sheet.page2 .foot { position: static; margin-top: 12px; }
   .sheet.page2.hidden { display: none; }
+  /* 팀실적 (2페이지) */
+  .sheet.pageT { min-height: 0; }
+  .sheet.pageT .foot { position: static; margin-top: 12px; }
+  table.kpi tr.kfirst td { border-top: 1px solid var(--rule); }
+  table.kpi tr.kfirst td.l.kname { font-weight: 700; }
+  table.kpi td.kname { width: 30%; }
+  table.kpi tr.krate td { color: var(--muted); font-size: 8.4pt; }
+  table.kpi td.memo { text-align: left; white-space: normal; font-size: 8pt; color: #444; }
+  table.kpi .dash { color: var(--rule); }
 
   /* 운영현황 (2페이지) */
   .grid2.ops2 { grid-template-columns: 1fr 1fr; }
@@ -241,6 +250,7 @@
     .sheet { width: 210mm; height: 297mm; min-height: 297mm; margin: 0; box-shadow: none; page-break-after: always; overflow: hidden; }
     .sheet.page2 { height: auto; min-height: 0; page-break-after: auto; page-break-before: always; }
     .sheet.page2.hidden { display: none; }
+    .sheet.pageT { height: auto; min-height: 0; page-break-after: auto; page-break-before: always; padding-bottom: 10mm; }
     .sheet.page3 { height: 297mm; min-height: 297mm; overflow: hidden; page-break-after: auto; page-break-before: always; }
     .sheet.page3.hidden { display: none; }
     .sheet.page4 { height: auto; min-height: 0; page-break-before: always; page-break-after: auto; padding-bottom: 10mm; }   /* 확인용 메모: 열람 중일 때만 4페이지로 인쇄 */
@@ -319,10 +329,20 @@
     <h2>부문실적 <small>당월 / 1월~ 누적 · 부문은 소속 팀 합계</small></h2>
     <table id="tblDiv"></table>
 
-    <h2>팀실적 <small>당월 · 팀 이슈</small></h2>
-    <table id="tblTeam"></table>
-
     <div class="foot"><span>단위: 억원 · 계획비 = 실적 − 계획(수정사업계획) · 누적·연간은 1월부터 · 1~4월 구 SALES 팀은 영업사업부에 합산 · △는 음수</span><span id="footR"></span></div>
+  </div>
+
+  <!-- 2페이지: 팀실적 — 팀 손익·이슈(1페이지에서 이동) + 팀 KPI(대수, 계획 대비) -->
+  <div class="sheet pageT" id="pageTeam">
+    <div class="masthead">
+      <div><div class="co">코오롱오토옥션㈜ · 재무회계팀</div><h1 id="titleT">팀실적</h1></div>
+      <div class="meta" id="metaT"></div>
+    </div>
+    <h2>팀 손익 <small>당월 · 억원 · 팀 이슈</small></h2>
+    <table id="tblTeam"></table>
+    <h2 class="gap-top">팀 KPI <small id="kpiSub">당월 · 대 · 계획 대비</small></h2>
+    <table id="tblKpi" class="kpi"></table>
+    <div class="foot"><span>팀 KPI — db_auction 오른쪽 블록(연월·팀·세부·지표·계획·실적) · 계획 = 2026 실행계획(207) · 낙찰률은 출품·낙찰 대수로 자동 계산 · 계획·실적 빈칸은 —</span><span id="footRT"></span></div>
   </div>
 
   <div class="sheet page2 hidden" id="page2">
@@ -596,6 +616,50 @@ function renderTeams() {
     return row + irows;
   }).join('');
   document.getElementById('tblTeam').innerHTML = head(TEAMCOLS, false) + `<tbody>${body}</tbody>`;
+  document.getElementById('titleT').innerHTML = `${YEAR}년 <span>${monLabel(m)}</span> 팀실적`;
+  document.getElementById('metaT').innerHTML = `기준: ${YEAR}.${m}<br>손익: 억원 · KPI: 대`;
+  document.getElementById('footRT').textContent = `코오롱오토옥션 · ${YEAR}.${m} · 2/4`;
+}
+
+// ── 팀 KPI (계획 대비) ──
+//   db_auction 오른쪽 블록 — 헤더: 연월 | 팀 | 세부 | 지표 | 계획 | 실적 | 비고 (헤더 이름으로 열을 찾음, '지표' 열 기준)
+//   같은 팀·세부 안에서 나온 순서대로 표시. 출품대수·낙찰대수가 둘 다 있으면 그 아래 낙찰률 자동. 빈칸은 —
+function renderTeamKpi() {
+  const el = document.getElementById('tblKpi'), key = `${YEAR}-${state.month}`;
+  const rows = state.ops.db_auction || [], hdr = (rows[0] || []).map(h => String(h ?? '').replace(/\s/g,''));
+  const cK = hdr.indexOf('지표');
+  if (cK < 0) { el.innerHTML = `<tbody><tr><td class="l plan">db_auction 오른쪽에 팀 KPI 블록(연월·팀·세부·지표·계획·실적)이 없습니다</td></tr></tbody>`; return; }
+  const after = name => hdr.indexOf(name, cK), before = name => hdr.lastIndexOf(name, cK);
+  const cY = before('연월'), cT = before('팀'), cS = before('세부'), cP = after('계획'), cA = after('실적'), cN = after('비고');
+  const val = v => (v == null || v === '' || v === '-') ? null : num(v);
+  const items = rows.slice(1).filter(r => ymOf(r[cY]) === key && String(r[cK] ?? '').trim());
+  if (!items.length) { el.innerHTML = `<tbody><tr><td class="l plan">db_auction 팀 KPI 블록에 ${key} 행이 없습니다</td></tr></tbody>`; return; }
+  const groups = [], gi = {};
+  items.forEach(r => {
+    const t = String(r[cT] ?? '').trim(), s = String(r[cS] ?? '').trim(), g = t + '|' + s;
+    if (!(g in gi)) { gi[g] = groups.length; groups.push({ t, s, rows: [] }); }
+    groups[gi[g]].rows.push({ k: String(r[cK]).trim(), p: val(r[cP]), a: val(r[cA]), n: cN >= 0 ? String(r[cN] ?? '') : '' });
+  });
+  const dash = '<span class="dash">—</span>';
+  const line = (cls, name, k, p, a, kind, n) =>
+    `<tr class="${cls}"><td class="l kname">${name}</td><td class="l">${k}</td>` +
+    `<td class="gs plan">${p == null ? dash : kind === 'pct' ? p.toFixed(1) + '%' : cnt(p)}</td>` +
+    `<td>${a == null ? dash : kind === 'pct' ? a.toFixed(1) + '%' : cnt(a)}</td>` +
+    `<td>${p == null || a == null ? '' : diffTxt(a, p, kind)}</td><td class="memo">${n || ''}</td></tr>`;
+  const body = groups.map(g => {
+    const name = g.s ? `${teamLabel(g.t)} · ${g.s}` : teamLabel(g.t);
+    const out = [];
+    g.rows.forEach((r, i) => {
+      out.push(line(i === 0 ? 'kfirst' : '', i === 0 ? name : '', r.k, r.p, r.a, 'cnt', r.n));
+      if (/낙찰/.test(r.k)) {   // 낙찰 행 바로 아래 낙찰률
+        const e = g.rows.find(x => /출품/.test(x.k));
+        const rt = (x, y) => (x != null && y) ? x / y * 100 : null;
+        if (e) out.push(line('krate', '', '낙찰률', rt(r.p, e.p), rt(r.a, e.a), 'pct', ''));
+      }
+    });
+    return out.join('');
+  }).join('');
+  el.innerHTML = `<thead><tr><th class="l">팀</th><th class="l">지표</th><th class="gs">계획</th><th>실적</th><th>계획비</th><th class="l">비고</th></tr></thead><tbody>${body}</tbody>`;
 }
 
 // ── 연간 전망 (1~12월 합계) ──
@@ -822,7 +886,7 @@ function renderOps() {
   document.getElementById('page2').classList.toggle('hidden', !any);
   document.getElementById('title2').innerHTML = `${YEAR}년 <span>${monLabel(state.month)}</span> 운영현황`;
   document.getElementById('meta2').innerHTML = `기준: ${YEAR}.${state.month} 말<br>대수: 대 · 금액: 억원`;
-  document.getElementById('footR2').textContent = `코오롱오토옥션 · ${YEAR}.${state.month} · 2/3`;
+  document.getElementById('footR2').textContent = `코오롱오토옥션 · ${YEAR}.${state.month} · 3/4`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1040,7 +1104,7 @@ function renderBS() {
   document.getElementById('title3').innerHTML = `${YEAR}년 <span>${monLabel(m)}</span> 요약 재무상태표`;
   const srcTxt = k => built.autoMonths.includes(k) ? '결산명세서(대시보드 집계)' : 'db_bs';
   document.getElementById('meta3').innerHTML = `기준: ${YEAR}.${m} 말 · 단위: 백만원<br>당월 ${srcTxt(`${YEAR}-${m}`)} · 전월 ${srcTxt(`${YEAR}-${prevM}`)} · 전기말 ${srcTxt(`${Number(YEAR)-1}-12`)}`;
-  document.getElementById('footR3').textContent = `코오롱오토옥션 · ${YEAR}.${m} · 3/3`;
+  document.getElementById('footR3').textContent = `코오롱오토옥션 · ${YEAR}.${m} · 4/4`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1061,7 +1125,7 @@ function renderMemo() {
   document.getElementById('meta4').innerHTML = `기준: ${YEAR}.${state.month}<br>본인 확인용`;
   document.getElementById('footR4').textContent = `코오롱오토옥션 · ${YEAR}.${state.month} · 메모`;
 }
-function renderAll() { renderTabs(); renderForecast(); renderSummary(); renderIssues(); renderDivisions(); renderTeams(); renderOps(); renderBS(); renderMemo(); }
+function renderAll() { renderTabs(); renderForecast(); renderSummary(); renderIssues(); renderDivisions(); renderTeams(); renderTeamKpi(); renderOps(); renderBS(); renderMemo(); }
 
 // ═══════════════════════════════════════════════════════════════
 // 데이터 로드 — Apps Script POST { action:'data', pw } (비밀번호가 맞아야 데이터가 옴, 주소에 비밀번호 안 남음)
