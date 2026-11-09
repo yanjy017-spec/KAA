@@ -388,9 +388,14 @@ const MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];  /
 const SHOW_FROM = '08';                                                          // 화면 탭은 8월(출범월)부터
 const TEAM_MAP = {
   'AUCTION':'경매운영팀', '출품영업':'출품영업팀', '출품영업팀':'출품영업팀', '법인영업팀':'법인영업팀', '매입판매팀':'매입판매팀',
+  // 26.10~ 손익 파일에 생긴 계획 미편성 팀 — 계획 팀에 합산 (같은 팀으로 매핑된 열은 더함)
+  //   시너지팀: 매출·매출이익만 있고 영업이익은 원본에서 법인영업팀에 합산돼 있음 → 법인영업팀
+  //   소매판매팀: 계획상 매입판매팀(플랫폼+소매)에 포함 → 매입판매팀
+  '시너지팀':'법인영업팀', '소매판매팀':'매입판매팀',
   // 1~4월 구 조직 SALES 팀 — 영업사업부 합계에만 반영 (팀 표에는 미표시)
   '딜러운영팀':'딜러운영팀', '직영판매팀':'직영판매팀', '제휴영업팀':'제휴영업팀', '매입영업팀':'매입영업팀',
 };
+const MERGE_SRC = new Set(['시너지팀', '소매판매팀']);   // 다른 팀 열에 더해지는 원본 팀명 (TEAM_MAP 참고)
 const DIVISIONS = [
   { name:'운영사업부', teams:['경매운영팀'], legacy:[] },
   { name:'영업사업부', teams:['출품영업팀','법인영업팀','매입판매팀'], legacy:['딜러운영팀','직영판매팀','제휴영업팀','매입영업팀'] },
@@ -448,14 +453,20 @@ function parseRaw(rows) {
   for (let j = 0; j < hmon.length; ) {
     const md = monthOf(hmon[j]);
     if (!md || /합계/.test(String(hmon[j]))) { j++; continue; }
-    const mon = md.m, teams = {}; let k = j + 1;
+    const mon = md.m, main = {}, extra = {}; let k = j + 1;
     while (k < hmon.length && k < j + 12) {
       const top = String(hmon[k] ?? '').replace(/\n/g,' ').trim();
       if (top && !/AUCTION|SALES/i.test(top)) break;
       const t = String(hteam[k] ?? '').replace(/\n/g,' ').trim();
-      if (t && !t.includes('합계') && TEAM_MAP[t] && !(TEAM_MAP[t] in teams)) teams[TEAM_MAP[t]] = k;
+      const tm = TEAM_MAP[t];
+      if (t && !t.includes('합계') && tm) {
+        if (MERGE_SRC.has(t)) (extra[tm] = extra[tm] || []).push(k);   // 합산 대상 열은 항상 더함
+        else if (!(tm in main)) main[tm] = k;                           // 그 외는 팀당 첫 열만 (중복 헤더 방지)
+      }
       k++;
     }
+    const teams = {};   // 팀 → [열 번호…]
+    new Set([...Object.keys(main), ...Object.keys(extra)]).forEach(tm => teams[tm] = [...(tm in main ? [main[tm]] : []), ...(extra[tm] || [])]);
     if (MONTHS.includes(mon) && md.y === YEAR && !cols[mon]) cols[mon] = teams;
     j = k;
   }
@@ -473,8 +484,8 @@ function parseRaw(rows) {
   const out = {};
   for (const [mon, teams] of Object.entries(cols)) {
     out[mon] = {};
-    for (const [team, c] of Object.entries(teams)) {
-      const o = {}; KEYS.forEach(k => o[k] = keyrows[k] != null ? val(keyrows[k], c) : 0);
+    for (const [team, cs] of Object.entries(teams)) {
+      const o = {}; KEYS.forEach(k => o[k] = keyrows[k] != null ? cs.reduce((s, c) => s + val(keyrows[k], c), 0) : 0);
       out[mon][team] = o;
     }
   }
