@@ -211,7 +211,7 @@
   .memo .ml b { font-weight: 600; }
   .memo .none { color: var(--muted); padding: 6px 0; }
   table.bs { font-size: 8.6pt; }
-  table.bs td, table.bs th { padding: 1.9px 6px; line-height: 1.4; }
+  table.bs td, table.bs th { padding: var(--bspad, 1.9px) 6px; line-height: 1.4; }   /* --bspad: fitBS() 가 A4 한 장을 채우도록 자동 조정 */
   table.bs td.note { text-align: left; white-space: normal; font-size: 7.9pt; color: #444; line-height: 1.35; max-width: 66mm; }
   table.bs tr.lv0 td.note, table.bs tr.lv1 td.note { font-weight: 400; }
   table.bs th.note { text-align: left; }
@@ -1114,7 +1114,24 @@ function renderBS() {
   document.getElementById('title3').innerHTML = `${YEAR}년 <span>${monLabel(m)}</span> 요약 재무상태표`;
   document.getElementById('meta3').innerHTML = `기준: ${YEAR}.${m} 말<br>단위: 백만원`;
   document.getElementById('footR3').textContent = `코오롱오토옥션 · ${YEAR}.${m} · 4/4`;
+  fitBS();
 }
+// 4페이지 하단 여백 없애기 — 재무비율 표 끝이 바닥글 바로 위에 오도록 표 행 간격(--bspad)을 찾아 맞춤.
+//   A4 폭(210mm)으로 그려질 때만 (좁은 화면에서는 기본값). 접기·펼치기 때마다 다시 맞춤, 인쇄도 같은 크기라 그대로 적용
+function fitBS() {
+  const p3 = document.getElementById('page3');
+  p3.style.removeProperty('--bspad');
+  if (p3.classList.contains('hidden')) return;
+  const mm = 96 / 25.4, r = p3.getBoundingClientRect();
+  if (Math.abs(r.width - 210 * mm) > 3) return;
+  const foot = p3.querySelector('.foot'), last = document.getElementById('tblRatio');
+  const room = () => (r.top + (297 - 10) * mm - 4 * mm) - last.getBoundingClientRect().bottom;   // 바닥글 자리(아래 10mm) 위 4mm 까지
+  let lo = 1.6, hi = 9;
+  for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; p3.style.setProperty('--bspad', mid + 'px'); if (room() >= 0) lo = mid; else hi = mid; }
+  p3.style.setProperty('--bspad', lo.toFixed(2) + 'px');
+}
+window.addEventListener('resize', () => { if (state.loadedAt) fitBS(); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (state.loadedAt) fitBS(); });   // 웹폰트 적용 뒤 글자 폭이 바뀌면 다시 맞춤
 
 // ═══════════════════════════════════════════════════════════════
 // 확인용 메모 (4페이지) — db_issue 의 '…메모…' 제목 열(현재 G열). 공개 데이터에는 없고, 메모 비밀번호를 Apps Script 가 확인한 뒤에만 내려줌
