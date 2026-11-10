@@ -210,8 +210,8 @@
   .memo .ml { padding: 3px 0 3px 12px; border-bottom: 1px solid var(--rule-soft); line-height: 1.5; white-space: normal; }
   .memo .ml b { font-weight: 600; }
   .memo .none { color: var(--muted); padding: 6px 0; }
-  table.bs { font-size: 8.8pt; }
-  table.bs td, table.bs th { padding: 2.6px 6px; }
+  table.bs { font-size: 8.6pt; }
+  table.bs td, table.bs th { padding: 1.9px 6px; line-height: 1.4; }
   table.bs td.note { text-align: left; white-space: normal; font-size: 7.9pt; color: #444; line-height: 1.35; max-width: 66mm; }
   table.bs tr.lv0 td.note, table.bs tr.lv1 td.note { font-weight: 400; }
   table.bs th.note { text-align: left; }
@@ -430,7 +430,7 @@ const TEAM_ALIAS = { '플랫폼영업팀': ['매입판매팀', '플랫폼'], '�
 const teamLabel = t => TEAM_LABEL[t] || t;
 const ALL_TEAMS = DIVISIONS.flatMap(d => [...d.teams, ...d.legacy]);   // 누적 합산용
 const divTeams = d => [...d.teams, ...d.legacy];
-const KEYS  = ['rev','rev_goods','cogs','gp','sga_direct','op_direct','pbt_direct','sga_total','op_total','pbt_total'];   // rev_goods = 상품매출(400200), 재고회전율 산정용
+const KEYS  = ['rev','rev_goods','cogs','gp','sga_direct','op_direct','pbt_direct','sga_total','op_total','pbt_total','int'];   // rev_goods = 상품매출(400200), 재고회전율 산정용 · int = 지급이자(610100), 이자보상배율 산정용
 
 const SAMPLE = null;   // 실제 숫자 샘플 내장 제거 (공개 페이지 소스 노출 방지) — 데이터는 로그인 후 Apps Script 에서만
 
@@ -444,6 +444,7 @@ function classify(code, name) {
   const c = String(code ?? '').trim(), n = norm(name);
   if (c === '400' || n === '매출액') return 'rev';
   if (c === '400200' || n === '상품매출') return 'rev_goods';
+  if (c === '610100') return 'int';   // 지급이자 — 계정코드로만 (직접손익 구간의 같은 이름 행은 코드 없음)
   if (c === '410' || c === '500' || n === '매출원가') return 'cogs';
   if (n === '매출이익' || n === 'II-1매출이익') return 'gp';
   if (c === '530' || n.endsWith('판매비와일반관리비') || n === '판관비') return 'sga';
@@ -497,7 +498,7 @@ function parseRaw(rows) {
     if (r[0] == null && r[1] == null) continue;
     const t = classify(r[0], r[1]); if (!t) continue;
     const n = seen[t] || 0; seen[t] = n + 1;
-    if (t === 'rev' || t === 'rev_goods' || t === 'cogs' || t === 'gp') { if (!(t in keyrows)) keyrows[t] = i; }   // 첫 행만 — 시트 하단 요약·차트 영역의 같은 이름 행(팀 열 빈칸) 무시
+    if (t === 'rev' || t === 'rev_goods' || t === 'cogs' || t === 'gp' || t === 'int') { if (!(t in keyrows)) keyrows[t] = i; }   // 첫 행만 — 시트 하단 요약·차트 영역의 같은 이름 행(팀 열 빈칸) 무시
     else if (n === 0) keyrows[t + '_direct'] = i;
     else if (n === 1) keyrows[t + '_total'] = i;
   }
@@ -1090,11 +1091,17 @@ function renderBS() {
   const days = v => v == null ? '—' : v.toFixed(1) + '일';
   const pp = (a, b) => (a == null || b == null) ? '' : `${(a - b) >= 0 ? '+' : '△'}${Math.abs((a - b) * 100).toFixed(1)}%p`;
   const dd = (a, b) => (a == null || b == null) ? '' : `${(a - b) >= 0 ? '+' : '△'}${Math.abs(a - b).toFixed(1)}일`;
+  // 이자보상배율 = 영업이익 ÷ 이자비용(지급이자), 1~해당월 누적 기준. 전기말은 전년 손익이 없어 —
+  const icr = upto => { const x = cum(state.actual, upto, ALL_TEAMS); return Math.abs(x.int) > 1e-9 ? x.op_total / x.int : null; };
+  const icrM = icr(m), icrP = m > '01' ? icr(prevM) : null;
+  const times = v => v == null ? '—' : v.toFixed(1) + '배';
+  const dx = (a, b) => (a == null || b == null) ? '' : `${(a - b) >= 0 ? '+' : '△'}${Math.abs(a - b).toFixed(1)}배`;
   const R = [
     ['부채비율',       ratio(debt, cB),   ratio(debt, cP),   ratio(debt, cM),   pct, pp, '부채총계 ÷ 자본총계', true],
     ['유동비율',       ratio(curr, cB),   ratio(curr, cP),   ratio(curr, cM),   pct, pp, '유동자산 ÷ 유동부채 (높을수록 양호)', false],
     ['순차입금비율',   ratio(netDbt, cB), ratio(netDbt, cP), ratio(netDbt, cM), pct, pp, '(차입금·사채 − 현금성자산 − 단기금융자산) ÷ 자본총계 (낮을수록 양호)', true],
-    ['재고자산회전일수', null,            null,              ratio(invDays, cM), days, dd, hasGoods ? '365 ÷ (연환산 상품매출 ÷ 평균재고) · 경매수수료 등 제외, 1~당월 상품매출 연환산' : '365 ÷ (연환산 매출 ÷ 평균재고) · ※ 상품매출 행 미수신, 전체 매출 기준', true],
+    ['재고자산회전일수', null,            null,              ratio(invDays, cM), days, dd, hasGoods ? '365 ÷ (연환산 상품매출 ÷ 평균재고) · 경매수수료 등 제외, 1~당월 상품매출 연환산' : '365 ÷ (연환산 매출 ÷ 평균재고) · 전체 매출 기준', true],
+    ['이자보상배율',   null,              icrP,              icrM,              times, dx, '영업이익 ÷ 이자비용 · 1~당월 누적 (1배 미만이면 영업이익으로 이자 미충당)', false],
   ];
   document.getElementById('tblRatio').innerHTML =
     `<thead><tr><th class="l">구분</th><th>전기말</th><th>전월</th><th>당월</th><th>증감(전월대비)</th><th>증감(전기대비)</th><th class="note">산식</th></tr></thead><tbody>` +
