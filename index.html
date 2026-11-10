@@ -812,14 +812,29 @@ function renderOps() {
     nEl.querySelector('.nbody').innerHTML = noteLines.map(l => `<div class="nl">${l}</div>`).join('');
   } else { stEl.innerHTML = `<tbody><tr><td class="l plan">인원 자료 없음</td></tr></tbody>`; document.getElementById('opsStaffNotes').style.display = 'none'; }
 
-  // ── 기말 가용현금 ──
+  // ── 기말 가용현금 = 기말 현금 + 한도대 미사용 ──
+  //   db_cash 헤더 이름으로 열을 찾음: 연월 | 기말가용현금(원) | 비고 | 기말현금(원) | 한도대미사용(원) | 한도(원)
+  //   기말현금·한도대미사용이 있는 달은 세 줄, 없는 달은 가용현금 한 줄. 전월 비교는 전월에도 같은 구성일 때만
   const ca = rowsFor('db_cash', key)[0], caP = rowsFor('db_cash', prevKey)[0];
   const caEl = document.getElementById('opsCash');
   if (ca) {
     any = true;
-    const v = num(ca[1]) / 1e8, pv = caP ? num(caP[1]) / 1e8 : null;
-    caEl.innerHTML = `<thead><tr><th class="l">구분</th><th>당월</th><th>전월</th><th>증감</th></tr></thead><tbody>` +
-      `<tr class="total"><td class="l">기말 가용현금</td><td>${fmt(v)}</td><td class="plan">${pv != null ? fmt(pv) : '—'}</td><td>${pv != null ? diffTxt(v, pv, 'amt') : ''}</td></tr>` +
+    const caHdr = ((state.ops.db_cash || [])[0] || []).map(h => String(h ?? '').replace(/\s|\(원\)/g, ''));
+    const cCash = caHdr.indexOf('기말현금'), cUn = caHdr.indexOf('한도대미사용'), cLim = caHdr.indexOf('한도');
+    const has = r => !!r && cCash >= 0 && cUn >= 0 && r[cCash] != null && r[cCash] !== '';
+    const line = (cls, label, v, pv) => `<tr class="${cls}"><td class="l">${label}</td><td>${fmt(v)}</td><td class="plan">${pv != null ? fmt(pv) : '—'}</td><td>${pv != null ? diffTxt(v, pv, 'amt') : ''}</td></tr>`;
+    let body;
+    if (has(ca)) {
+      const c = num(ca[cCash]) / 1e8, u = num(ca[cUn]) / 1e8;
+      const L = cLim >= 0 && ca[cLim] != null && ca[cLim] !== '' ? num(ca[cLim]) / 1e8 : null;
+      const pOk = has(caP), pc = pOk ? num(caP[cCash]) / 1e8 : null, pu = pOk ? num(caP[cUn]) / 1e8 : null;
+      body = line('', '기말 현금', c, pc) +
+        line('', `한도대 미사용${L != null ? ` <span class="plan" style="font-weight:400">(한도 ${+L.toFixed(1)}억)</span>` : ''}`, u, pu) +
+        line('total', '기말 가용현금', c + u, pOk ? pc + pu : null);
+    } else {
+      body = line('total', '기말 가용현금', num(ca[1]) / 1e8, caP && !has(caP) ? num(caP[1]) / 1e8 : null);
+    }
+    caEl.innerHTML = `<thead><tr><th class="l">구분</th><th>당월</th><th>전월</th><th>증감</th></tr></thead><tbody>` + body +
       (ca[2] ? `<tr><td class="l plan" colspan="4" style="white-space:normal;font-weight:400">${ca[2]}</td></tr>` : '') + `</tbody>`;
   } else caEl.innerHTML = `<tbody><tr><td class="l plan">가용현금 자료 없음</td></tr></tbody>`;
 
